@@ -16,7 +16,10 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // --- THIS FUNCTION IS NOW COMPLETE ---
+  // --- State for the search functionality ---
+  const [searchColumn, setSearchColumn] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
   const fetchTableData = useCallback(async () => {
     if (!selectedTable) return;
     setLoading(true);
@@ -27,10 +30,13 @@ export default function Home() {
       const data = await res.json();
       setTableData(data);
       if (data.length > 0) {
-        setColumns(Object.keys(data[0]));
+        const tableColumns = Object.keys(data[0]);
+        setColumns(tableColumns);
+        setSearchColumn(tableColumns[0]); // Default search to the first column
       } else {
         setColumns([]);
       }
+      setSearchQuery(''); // Reset search when table changes
     } catch (err) {
       setError(err.message);
       setTableData([]);
@@ -40,7 +46,6 @@ export default function Home() {
     }
   }, [selectedTable]);
 
-  // --- THIS USEEFFECT IS NOW COMPLETE ---
   useEffect(() => {
     async function fetchTables() {
       try {
@@ -57,10 +62,68 @@ export default function Home() {
     fetchTables();
   }, []);
 
-  // --- THIS USEEFFECT IS NOW COMPLETE ---
   useEffect(() => {
     fetchTableData();
   }, [fetchTableData]);
+
+  const handleDelete = async (id, primaryKeyColumn) => {
+    if (!window.confirm(`Are you sure you want to delete this record with ID ${id}?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/data?table=${selectedTable}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, primaryKeyColumn }),
+      });
+      if (!res.ok) {
+        throw new Error((await res.json()).message || 'Failed to delete record');
+      }
+      alert('Record deleted successfully!');
+      fetchTableData();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleUpdate = async (rowData) => {
+    const primaryKeyColumn = columns[0];
+    const id = rowData[primaryKeyColumn];
+    
+    const updateData = {};
+    for (const col of columns) {
+      if (col === primaryKeyColumn) continue;
+      
+      const newValue = window.prompt(`Enter new value for ${col}:`, rowData[col]);
+      if (newValue === null) return;
+      
+      updateData[col] = newValue;
+    }
+
+    try {
+      const res = await fetch(`/api/data?table=${selectedTable}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, primaryKeyColumn, updateData }),
+      });
+      if (!res.ok) {
+        throw new Error((await res.json()).message || 'Failed to update record');
+      }
+      alert('Record updated successfully!');
+      fetchTableData();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  // --- Filtering logic ---
+  const filteredData = tableData.filter(row => {
+    if (!searchQuery || !searchColumn) {
+      return true;
+    }
+    const cellValue = String(row[searchColumn] || '').toLowerCase();
+    return cellValue.includes(searchQuery.toLowerCase());
+  });
   
   return (
     <main>
@@ -93,6 +156,24 @@ export default function Home() {
       <hr style={{ margin: '40px 0', border: 'none', borderTop: '1px solid #dee2e6' }} />
 
       <h2>Viewing Table: `{selectedTable}`</h2>
+
+      <div style={{ display: 'flex', gap: '10px', margin: '20px 0', alignItems: 'center' }}>
+        <select 
+          value={searchColumn} 
+          onChange={(e) => setSearchColumn(e.target.value)}
+          aria-label="Select column to search"
+        >
+          {columns.map(col => <option key={col} value={col}>Search by {col}</option>)}
+        </select>
+        <input 
+          type="text" 
+          placeholder="Type to search..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: '8px', width: '300px' }}
+        />
+      </div>
+
       {loading && <p>Loading data...</p>}
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
       
@@ -102,10 +183,11 @@ export default function Home() {
             <thead>
               <tr>
                 {columns.map(col => <th key={col}>{col}</th>)}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {tableData.map((row, rowIndex) => (
+              {filteredData.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {columns.map(col => (
                     <td key={col}>
@@ -114,6 +196,10 @@ export default function Home() {
                         : String(row[col] === null ? '' : row[col])}
                     </td>
                   ))}
+                  <td>
+                    <button onClick={() => handleUpdate(row)} style={{ marginRight: '5px' }}>Update</button>
+                    <button onClick={() => handleDelete(row[columns[0]], columns[0])}>Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
