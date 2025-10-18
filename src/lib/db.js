@@ -1,4 +1,5 @@
-// lib/db.js
+// File: src/lib/db.js
+
 import mysql from 'mysql2/promise';
 
 export async function query({ query, values = [] }) {
@@ -11,11 +12,16 @@ export async function query({ query, values = [] }) {
   });
 
   try {
-    const [results] = await dbconnection.execute(query, values);
+    // --- THIS IS THE FIX ---
+    // Change from .execute to .query
+    const [results] = await dbconnection.query(query, values);
+    // --- END OF FIX ---
+
     dbconnection.end();
     return results;
   } catch (error) {
+    // Make sure we end the connection even if there is an error
+    dbconnection.end();
     throw Error(error.message);
-    return { error };
   }
 }
